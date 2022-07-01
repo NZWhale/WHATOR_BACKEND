@@ -9,7 +9,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) =>
         ({
-          botKey: configService.get('Telegram_API_Key'),
+          token: configService.get('telegram.key'),
         } as unknown as TelegrafModuleOptions),
       inject: [ConfigService],
     }),
