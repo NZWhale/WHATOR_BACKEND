@@ -1,9 +1,15 @@
-import { Update, Start, Hears} from 'nestjs-telegraf';
+import { Update, Start, Hears } from 'nestjs-telegraf';
 import { Markup } from 'telegraf';
+import * as fs from 'fs';
+// import WebTorrent from 'webtorrent'
 
 @Update()
 export class TelegramUpdate {
-  constructor() {}
+  private readonly client;
+  constructor() {
+    const WebTorrent = require('webtorrent');
+    this.client = new WebTorrent();
+  }
 
   @Start()
   async startCommand(ctx: any) {
@@ -41,8 +47,9 @@ export class TelegramUpdate {
   async status(ctx: any) {
     await ctx.deleteMessage();
     await ctx.deleteMessage(ctx.message.message_id - 1);
+    const progress = this.client.progress;
     await ctx.reply(
-      'Downloading progress',
+      `Downloading progress ${progress}`,
       Markup.keyboard([
         ['Help', 'Media', 'Status'],
         ['Registration', 'Remove data'],
@@ -121,9 +128,42 @@ export class TelegramUpdate {
     );
   }
 
+    @Hears('logout')
+    async logout(ctx: any) {
+        const video = await fs.promises.readFile("/home/littlewhale/Desktop/CODE/PROJECTS/WHATOR/whator_backend/src/assets/test2.mp4", {encoding: "base64"})
+        await ctx.replyWithVideo({source: "/home/littlewhale/Desktop/CODE/PROJECTS/WHATOR/whator_backend/src/assets/test2.mp4"})
+        console.log('document sended')
+    }
+
   @Hears(new RegExp(/magnet:?/g))
   async magentoUrl(ctx: any) {
-    console.log(ctx);
+    this.client.add(
+      ctx.message.text,
+      { addUID: true },
+      function (torrent) {
+        console.log('downloading ended, send files to user');
+        for (let i = 0; i < torrent.files.length; i++) {
+            console.log(torrent.files[i].path)
+            // const video = fs.readFile(torrent.files[i].path, {encoding: "base64"}, (data) => {
+            //     console.log(data)
+            // })
+            fs.writeFile('./file.mp4', Buffer.from(torrent.files[i].path), (res) => {
+                console.log(res)
+            })
+          ctx.replyWithVideo( {
+                source: torrent.files[i].path,
+            })
+              .then(res => {
+                  console.log('file sended to telegram')
+              })
+            .catch(function (error) {
+              console.log(error);
+            });
+        }
+      },
+    );
+    await ctx.deleteMessage();
+    await ctx.deleteMessage(ctx.message.message_id - 1);
     await ctx.reply('Downloading will start in a few seconds');
   }
 }
