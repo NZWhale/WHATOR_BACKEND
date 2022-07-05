@@ -26,6 +26,8 @@
     "@nestjs/core": "^8.0.0",
     "@nestjs/platform-express": "^8.0.0",
     "@nestjs/typeorm": "^8.0.3",
+    "adm-zip": "^0.5.9",
+    "file-extension": "^4.0.5",
     "mysql2": "^2.3.3",
     "nestjs-telegraf": "^2.4.1",
     "path": "^0.12.7",

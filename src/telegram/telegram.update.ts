@@ -1,14 +1,25 @@
 import { Update, Start, Hears } from 'nestjs-telegraf';
 import { Markup } from 'telegraf';
-import * as fs from 'fs';
-// import WebTorrent from 'webtorrent'
+import { CustomLoggerService } from '../logger/custom-logger.service';
+import * as WebTorrent from 'webtorrent';
 
 @Update()
 export class TelegramUpdate {
   private readonly client;
-  constructor() {
-    const WebTorrent = require('webtorrent');
+  private readonly fileExtension;
+  private readonly AdmZip;
+
+  constructor(private readonly logger: CustomLoggerService) {
     this.client = new WebTorrent();
+    this.fileExtension = require('file-extension');
+    this.AdmZip = require('adm-zip');
+
+    this.client.on('download', (bytes) => {
+      console.log('just downloaded: ' + bytes);
+      console.log('total downloaded: ' + this.client.downloaded);
+      console.log('download speed: ' + this.client.downloadSpeed);
+      console.log('progress: ' + this.client.progress);
+    });
   }
 
   @Start()
@@ -128,42 +139,42 @@ export class TelegramUpdate {
     );
   }
 
-    @Hears('logout')
-    async logout(ctx: any) {
-        const video = await fs.promises.readFile("/home/littlewhale/Desktop/CODE/PROJECTS/WHATOR/whator_backend/src/assets/test2.mp4", {encoding: "base64"})
-        await ctx.replyWithVideo({source: "/home/littlewhale/Desktop/CODE/PROJECTS/WHATOR/whator_backend/src/assets/test2.mp4"})
-        console.log('document sended')
-    }
-
   @Hears(new RegExp(/magnet:?/g))
   async magentoUrl(ctx: any) {
-    this.client.add(
-      ctx.message.text,
-      { addUID: true },
-      function (torrent) {
-        console.log('downloading ended, send files to user');
-        for (let i = 0; i < torrent.files.length; i++) {
-            console.log(torrent.files[i].path)
-            // const video = fs.readFile(torrent.files[i].path, {encoding: "base64"}, (data) => {
-            //     console.log(data)
-            // })
-            fs.writeFile('./file.mp4', Buffer.from(torrent.files[i].path), (res) => {
-                console.log(res)
+    try {
+      this.client.add(ctx.message.text, { addUID: true }, (torrent) => {
+        const zip = new this.AdmZip();
+        torrent.on('done', () => {
+          console.log('downloading ended, send files to user');
+          new Promise((resolve, reject) => {
+            for (let i = 0; i < torrent.files.length; i++) {
+              torrent.files[i].getBuffer((err, buffer) => {
+                if (err) reject(err);
+                console.log(`${torrent.files[i].name} buffered`);
+                zip.addFile(torrent.files[i].name, buffer);
+              });
+              // console.log(torrent.files[i].path)
+            }
+          });
+          zip.writeZip(`./${torrent.dn}.zip`);
+          ctx
+            .replyWithDocument({
+              source: `./${torrent.dn}.zip`,
             })
-          ctx.replyWithVideo( {
-                source: torrent.files[i].path,
+            .then(() => {
+              console.log('file sent to telegram');
             })
-              .then(res => {
-                  console.log('file sended to telegram')
-              })
             .catch(function (error) {
               console.log(error);
             });
-        }
-      },
-    );
-    await ctx.deleteMessage();
-    await ctx.deleteMessage(ctx.message.message_id - 1);
-    await ctx.reply('Downloading will start in a few seconds');
+        });
+      });
+
+      await ctx.deleteMessage();
+      await ctx.deleteMessage(ctx.message.message_id - 1);
+      await ctx.reply('Downloading will start in a few seconds');
+    } catch (e) {
+      this.logger.error(e.message);
+    }
   }
 }
