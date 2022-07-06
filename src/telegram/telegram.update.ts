@@ -142,19 +142,12 @@ export class TelegramUpdate {
   @Hears(new RegExp(/magnet:?/g))
   async magentoUrl(ctx: any) {
     try {
-      this.client.add(ctx.message.text, { addUID: true }, (torrent) => {
+      this.client.add(ctx.message.text, (torrent) => {
         const zip = new this.AdmZip();
-        torrent.on('done', () => {
-          console.log('downloading ended, send files to user');
-          new Promise((resolve, reject) => {
-            for (let i = 0; i < torrent.files.length; i++) {
-              torrent.files[i].getBuffer((err, buffer) => {
-                if (err) reject(err);
-                console.log(`${torrent.files[i].name} buffered`);
-                zip.addFile(torrent.files[i].name, buffer);
-              });
-              // console.log(torrent.files[i].path)
-            }
+        torrent.on('done', function () {
+          console.log('torrent finished downloading');
+          torrent.files.forEach(function (file) {
+            zip.addLocalFile(file.path);
           });
           zip.writeZip(`./${torrent.dn}.zip`);
           ctx
@@ -163,6 +156,7 @@ export class TelegramUpdate {
             })
             .then(() => {
               console.log('file sent to telegram');
+              torrent.destroy();
             })
             .catch(function (error) {
               console.log(error);

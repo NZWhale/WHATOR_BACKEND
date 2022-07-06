@@ -21,6 +21,11 @@ $ Install MySQL
 ## Running the app
 
 ```bash
+# telegram api server
+$ ./telegram-bot-api --local --api-id=$API_ID --api-hash=$API_HASH --log=./log.txt
+Run this command from /WHATOR/telegram-bot-api/bin
+
+
 # development
 $ npm run start
 
