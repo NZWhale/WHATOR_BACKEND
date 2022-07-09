@@ -9,6 +9,7 @@ export class TelegramUpdate {
   private readonly fileExtension;
   private readonly AdmZip;
   private lastMessages;
+  private progress;
 
   constructor(private readonly logger: CustomLoggerService) {
     this.client = new WebTorrent();
@@ -19,12 +20,12 @@ export class TelegramUpdate {
       user: null,
     };
 
-    this.client.on('download', (bytes) => {
-      console.log('just downloaded: ' + bytes);
-      console.log('total downloaded: ' + this.client.downloaded);
-      console.log('download speed: ' + this.client.downloadSpeed);
-      console.log('progress: ' + this.client.progress);
-    });
+    // this.client.on('download', (bytes) => {
+    //   console.log('just downloaded: ' + bytes);
+    //   console.log('total downloaded: ' + this.client.downloaded);
+    //   console.log('download speed: ' + this.client.downloadSpeed);
+    //   console.log('progress: ' + this.client.progress);
+    // });
   }
 
   @Start()
@@ -71,7 +72,7 @@ export class TelegramUpdate {
 
   @Action('Help')
   async helpCommand(ctx: Context) {
-    await this.replyWithText(
+    await this.editMessageText(
       ctx,
       '• To start downloading send magnet link into the chat.\n' +
         '• You can check downloading progress. Click status button.\n' +
@@ -85,38 +86,37 @@ export class TelegramUpdate {
   @Action('Status')
   async status(ctx: Context) {
     const progress = this.client.progress;
-    await this.replyWithText(ctx, `Downloading progress ${progress}`);
+    await this.editMessageText(ctx, `Downloading progress ${progress}`);
   }
 
   @Action('Registration')
   async registration(ctx: Context) {
-    await this.replyWithText(ctx, 'Registration link');
+    await this.editMessageText(ctx, 'Registration link');
   }
 
   @Action('Remove data')
   async removeData(ctx: Context) {
-    await this.replyWithText(ctx, 'Data was removed');
+    await this.editMessageText(ctx, 'Data was removed');
   }
 
   @Action('Sing up')
   async signUp(ctx: Context) {
-    await this.replyWithText(ctx, 'You are signed up');
+    await this.editMessageText(ctx, 'You are signed up');
   }
 
   @Action('Sing in')
   async signIn(ctx: Context) {
-    await this.replyWithText(ctx, 'You are signed in');
+    await this.editMessageText(ctx, 'You are signed in');
   }
 
   @Action('Media')
   async media(ctx: Context) {
     const torrents = this.client.torrents.map((el) => el.name);
     console.log(torrents);
-    await this.replyWithText(ctx, torrents);
+    await this.editMessageText(ctx, torrents);
   }
 
   async downloaded(ctx: Context, torrent: any) {
-    // await this.replyWithText(ctx, 'done');
     await ctx.replyWithDocument({
       source: `./${torrent.dn}.zip`,
     });
@@ -136,17 +136,18 @@ export class TelegramUpdate {
         async (torrent) => {
           if (torrent.length > 2136746229) {
             torrent.destroy();
-            await this.replyWithText(
+            await this.editMessageText(
               ctx,
               'The size of downloaded files must be less than 2 GB.\n' +
                 'To download files larger than 2 GB you should use web interface',
             );
             return;
           }
-          await this.replyWithText(
+          await this.editMessageText(
             ctx,
             'Downloading will start in a few seconds',
           );
+          this.showProgress(ctx);
           const zip = new this.AdmZip();
           torrent.on('done', async () => {
             console.log('torrent finished downloading');
@@ -155,19 +156,6 @@ export class TelegramUpdate {
             });
             zip.writeZip(`${torrent.dn}.zip`);
             await this.downloaded(ctx, torrent);
-            // ctx
-            //   .replyWithDocument({
-            //     source: `./${torrent.dn}.zip`,
-            //   })
-            //   .then(() => {
-            //     console.log('file sent to telegram');
-            //     torrent.destroy();
-            //   })
-            //   .catch(function (error) {
-            //     console.log(error);
-            //   });
-            // console.log('file sent to telegram');
-            // torrent.destroy();
           });
         },
       );
@@ -176,7 +164,26 @@ export class TelegramUpdate {
     }
   }
 
-  async replyWithText(ctx: Context, text) {
+  showProgress(ctx: Context) {
+    try {
+      this.progress = 0;
+      this.client.on('download', async (bytes) => {
+        console.log('download speed: ' + this.client.downloadSpeed);
+        console.log('progress: ' + this.client.progress);
+        const clientProgress = Math.floor(this.client.progress * 1000) / 10;
+        console.log(clientProgress, this.progress);
+        if (clientProgress > this.progress) {
+          const text = this.getProgress(clientProgress);
+          await this.editMessageText(ctx, text);
+          this.progress = clientProgress;
+        }
+      });
+    } catch (e) {
+      this.logger.error(e.message);
+    }
+  }
+
+  async editMessageText(ctx: Context, text) {
     try {
       const messageId = this.lastMessages.bot;
       const chatId = ctx.chat.id;
@@ -221,6 +228,43 @@ export class TelegramUpdate {
       );
     } catch (e) {
       this.logger.error(e.message);
+    }
+  }
+
+  getProgress(progress: number): string {
+    const progressBar = {
+      10: '⬛⬜⬜⬜⬜⬜⬜⬜⬜⬜',
+      20: '⬛⬛⬜⬜⬜⬜⬜⬜⬜⬜',
+      30: '⬛⬛⬛⬜⬜⬜⬜⬜⬜⬜',
+      40: '⬛⬛⬛⬛⬜⬜⬜⬜⬜⬜',
+      50: '⬛⬛⬛⬛⬛⬜⬜⬜⬜⬜',
+      60: '⬛⬛⬛⬛⬛⬛⬜⬜⬜⬜',
+      70: '⬛⬛⬛⬛⬛⬛⬛⬜⬜⬜',
+      80: '⬛⬛⬛⬛⬛⬛⬛⬛⬜⬜',
+      90: '⬛⬛⬛⬛⬛⬛⬛⬛⬛⬜',
+      100: '⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛',
+    };
+    switch (progress) {
+      case 0.1:
+        return progressBar['10'];
+      case 0.2:
+        return progressBar['20'];
+      case 0.3:
+        return progressBar['30'];
+      case 0.4:
+        return progressBar['40'];
+      case 0.5:
+        return progressBar['50'];
+      case 0.6:
+        return progressBar['60'];
+      case 0.7:
+        return progressBar['70'];
+      case 0.8:
+        return progressBar['80'];
+      case 0.9:
+        return progressBar['90'];
+      case 1:
+        return progressBar['100'];
     }
   }
 }
