@@ -2,7 +2,6 @@ import { Update, Start, Hears, Action } from 'nestjs-telegraf';
 import { Markup, Context } from 'telegraf';
 import { CustomLoggerService } from '../logger/custom-logger.service';
 import * as WebTorrent from 'webtorrent';
-import * as fs from 'fs';
 
 @Update()
 export class TelegramUpdate {
@@ -11,7 +10,7 @@ export class TelegramUpdate {
   private readonly AdmZip;
   private lastMessages;
   private progress;
-  private awayMessage = 'Downloading will start in a few seconds';
+  private isDowloading;
 
   constructor(private readonly logger: CustomLoggerService) {
     this.client = new WebTorrent();
@@ -32,7 +31,7 @@ export class TelegramUpdate {
 
   @Start()
   async startCommand(ctx: Context) {
-    this.lastMessages.bot = ctx.message.message_id + 1;
+    this.lastMessages.user = ctx.message.message_id;
     await this.replyWithInlineKeyboard(
       "Hey bro. Just send me magnet link and I'll download it. Click help button to get more information",
       ctx,
@@ -45,18 +44,11 @@ export class TelegramUpdate {
     await this.editMessageText(
       ctx,
       '• To start downloading send magnet link into the chat.\n' +
-        '• You can check downloading progress. Click status button.\n' +
         '• You can use web interface to watch you files. Click registration button and follow the instructions.\n' +
         '• To save your media data your should authorize into the app. Click sign up button.\n' +
         '• You can restore your media data. Click sign in button.\n' +
         '• You can delete all you data like media and user data. Click remove data button.\n',
     );
-  }
-
-  @Action('Status')
-  async status(ctx: Context) {
-    const progress = this.client.progress;
-    await this.editMessageText(ctx, `Downloading progress ${progress}`);
   }
 
   @Action('Registration')
@@ -87,7 +79,6 @@ export class TelegramUpdate {
   }
 
   async uploadToTg(ctx: Context, torrent: any): Promise<void> {
-    await this.editMessageText(ctx, '');
     await ctx.replyWithDocument({
       source: `./${torrent.dn}.zip`,
     });
@@ -97,13 +88,21 @@ export class TelegramUpdate {
       "Here we go! Let's move on, buddy!",
       ctx,
     );
-    this.lastMessages.bot = ctx.message.message_id + 2;
+    this.isDowloading = false;
   }
 
   @Hears(new RegExp(/magnet:?/g))
   async magentoUrl(ctx: any) {
     try {
       ctx.deleteMessage(ctx.message.message_id);
+      if (this.isDowloading) {
+        const text = 'Only one file can be downloaded at a time';
+        await ctx.reply(text);
+        setTimeout(async () => {
+          await ctx.deleteMessage(ctx.message.message_id + 1);
+        }, 2000);
+        return;
+      }
       this.client.add(
         ctx.message.text,
         {
@@ -121,7 +120,11 @@ export class TelegramUpdate {
             );
             return;
           }
-          await this.editMessageText(ctx, this.awayMessage);
+          await this.editMessageText(
+            ctx,
+            'Downloading will start in a few seconds.',
+          );
+          this.isDowloading = true;
           this.showProgress(ctx);
           const zip = new this.AdmZip();
           torrent.on('done', async () => {
@@ -143,7 +146,7 @@ export class TelegramUpdate {
   showProgress(ctx: Context) {
     try {
       this.progress = 0;
-      this.client.on('download', async (bytes) => {
+      this.client.on('download', async () => {
         const clientProgress = Math.floor(this.client.progress * 10) / 10;
         const downloadingSpeed = this.client.downloadSpeed;
         console.log(clientProgress, this.progress);
@@ -207,6 +210,46 @@ export class TelegramUpdate {
     }
   }
 
+  async replyWithInlineKeyboard(text: string, ctx: Context): Promise<void> {
+    const message = await ctx.reply(
+      text,
+      Markup.inlineKeyboard(
+        [
+          {
+            text: 'Help',
+            callback_data: 'Help',
+          },
+          {
+            text: 'Media',
+            callback_data: 'Media',
+          },
+          {
+            text: 'Status',
+            callback_data: 'Status',
+          },
+          {
+            text: 'Registration',
+            callback_data: 'Registration',
+          },
+          {
+            text: 'Remove data',
+            callback_data: 'Remove data',
+          },
+          {
+            text: 'Sing up',
+            callback_data: 'Sing up',
+          },
+          {
+            text: 'Sing in',
+            callback_data: 'Sing in',
+          },
+        ],
+        { columns: 3 },
+      ),
+    );
+    this.lastMessages.bot = message.message_id;
+  }
+
   getProgress(progress: number): string {
     const progressBar = {
       10: '⬛⬜⬜⬜⬜⬜⬜⬜⬜⬜',
@@ -268,45 +311,5 @@ export class TelegramUpdate {
       case 1:
         return progressBar['100'];
     }
-  }
-
-  async replyWithInlineKeyboard(text: string, ctx: Context): Promise<void> {
-    await ctx.reply(
-      text,
-      Markup.inlineKeyboard(
-        [
-          {
-            text: 'Help',
-            callback_data: 'Help',
-          },
-          {
-            text: 'Media',
-            callback_data: 'Media',
-          },
-          {
-            text: 'Status',
-            callback_data: 'Status',
-          },
-          {
-            text: 'Registration',
-            callback_data: 'Registration',
-          },
-          {
-            text: 'Remove data',
-            callback_data: 'Remove data',
-          },
-          {
-            text: 'Sing up',
-            callback_data: 'Sing up',
-          },
-          {
-            text: 'Sing in',
-            callback_data: 'Sing in',
-          },
-        ],
-        { columns: 3 },
-      ),
-    );
-    this.lastMessages.bot = ctx.message.message_id + 1;
   }
 }
