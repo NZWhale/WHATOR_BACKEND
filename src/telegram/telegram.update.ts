@@ -2,6 +2,11 @@ import { Update, Start, Hears, Action } from 'nestjs-telegraf';
 import { Markup, Context } from 'telegraf';
 import { CustomLoggerService } from '../logger/custom-logger.service';
 import * as WebTorrent from 'webtorrent';
+import { getManager } from 'typeorm';
+import { UserEntity } from '../entities/User.entity';
+import { LinkEntity } from '../entities/Link.entity';
+import { FileEntity } from '../entities/File.entity';
+import { User } from './interfaces';
 
 @Update()
 export class TelegramUpdate {
@@ -63,7 +68,41 @@ export class TelegramUpdate {
 
   @Action('Sing up')
   async signUp(ctx: Context) {
-    await this.editMessageText(ctx, 'You are signed up');
+    // await this.editMessageText(ctx, 'You are signed up');
+    try {
+      const newUser = {} as User;
+      newUser.telegramId = ctx.update['callback_query'].from.id;
+      newUser.username = ctx.update['callback_query'].from.username;
+      newUser.firstName = ctx.update['callback_query'].from.first_name;
+      newUser.lastName = ctx.update['callback_query'].from.last_name;
+      newUser.languageCode = ctx.update['callback_query'].from.language_code;
+      newUser.isBot = ctx.update['callback_query'].from.is_bot;
+
+      await getManager('magxb').transaction(async (transaction) => {
+        const isUserExits = await transaction.findOne(UserEntity, {
+          where: { userId: newUser.telegramId },
+        });
+        if (isUserExits) {
+          throw new Error('User already exists');
+        }
+        const rowUser = {
+          id: null,
+          userId: newUser.telegramId,
+          username: newUser.username,
+          firstName: newUser.firstName,
+          lastName: newUser.lastName,
+          languageCode: newUser.languageCode,
+          isBot: newUser.isBot,
+        };
+        const user = transaction.create(UserEntity, rowUser);
+        await transaction.save(user);
+        await this.editMessageText(ctx, 'You are signed up');
+      });
+      this.logger.log(`User ${newUser.telegramId} signed up`);
+    } catch (e) {
+      this.logger.error(e.message);
+      await this.editMessageText(ctx, e.message);
+    }
   }
 
   @Action('Sing in')
@@ -73,9 +112,39 @@ export class TelegramUpdate {
 
   @Action('Media')
   async media(ctx: Context) {
-    const torrents = this.client.torrents.map((el) => el.name);
-    console.log(torrents);
-    await this.editMessageText(ctx, torrents);
+    try {
+      const newUser = {} as User;
+      newUser.telegramId = ctx.update['callback_query'].from.id;
+      newUser.username = ctx.update['callback_query'].from.username;
+      newUser.firstName = ctx.update['callback_query'].from.first_name;
+      newUser.lastName = ctx.update['callback_query'].from.last_name;
+      newUser.languageCode = ctx.update['callback_query'].from.language_code;
+      newUser.isBot = ctx.update['callback_query'].from.is_bot;
+
+      await getManager('magxb').transaction(async (transaction) => {
+        const isUserExits = await transaction.findOne(UserEntity, {
+          where: { userId: newUser.telegramId },
+        });
+        if (!isUserExits) {
+          throw new Error('User not exists');
+        }
+        const links = await transaction.find(LinkEntity, {
+          relations: ['user'],
+          where: { user: { userId: newUser.telegramId } },
+        });
+        if (!links) {
+          throw new Error('Media not exists');
+        }
+        await this.editMessageText(
+          ctx,
+          `You have media ${JSON.stringify(links)}`,
+        );
+      });
+      this.logger.log(`User ${newUser.telegramId} signed up`);
+    } catch (e) {
+      this.logger.error(e.message);
+      await this.editMessageText(ctx, e.message);
+    }
   }
 
   async uploadToTg(ctx: Context, torrent: any): Promise<void> {
@@ -132,8 +201,15 @@ export class TelegramUpdate {
             torrent.files.forEach((file) => {
               zip.addLocalFile(file.path);
             });
-            zip.writeZip(`${torrent.dn}.zip`);
+            const pathToZip = `${torrent.dn}.zip`;
+            zip.writeZip(pathToZip);
             await this.uploadToTg(ctx, torrent);
+            await this.saveTorrent(
+              ctx.message.from.id,
+              ctx.message.text,
+              pathToZip,
+              torrent.dn,
+            );
             // await fs.promises.rm(`./${torrent.dn}.zip`);
           });
         },
@@ -248,6 +324,43 @@ export class TelegramUpdate {
       ),
     );
     this.lastMessages.bot = message.message_id;
+  }
+
+  async saveTorrent(
+    userId: number,
+    magnet: string,
+    path: string,
+    fileName: string,
+  ) {
+    // save torrent to db
+    try {
+      await getManager('magxb').transaction(async (transaction) => {
+        const user = await transaction.findOne(UserEntity, {
+          where: { userId: userId },
+        });
+        if (!user) {
+          throw new Error('User not exists');
+        }
+        const link: LinkEntity = {
+          id: null,
+          link: magnet,
+          linkType: 'magnet',
+          receiveDate: new Date(),
+          user: user,
+        };
+        const linkEntity = await transaction.create(LinkEntity, link);
+        // const file: FileEntity = {
+        //   id: null,
+        //   fileName: fileName,
+        //   pathToFile: path,
+        //   receiveDate: new Date(),
+        //   user: user,
+        // };
+        await transaction.save(linkEntity);
+      });
+    } catch (e) {
+      this.logger.error(e.message);
+    }
   }
 
   getProgress(progress: number): string {
