@@ -18,8 +18,7 @@ import {TelegramModule} from "./telegram/telegram.module";
           envFilePath: path.join(__dirname, '..', '.env'),
       }),
       TypeOrmModule.forRootAsync({
-          imports: CustomLoggerService,
-          name: 'kognia',
+          name: process.env.DB_NAME,
           useFactory: async () =>
               Object.assign(getConnectionOptions(), {
                   autoLoadEntities: true,

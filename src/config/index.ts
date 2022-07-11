@@ -11,4 +11,8 @@ export default () => ({
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
   },
+  telegram: {
+    key: process.env.TELEGRAM_API_KEY,
+    apiRoot: process.env.TELEGRAM_API_ROOT
+  }
 });
